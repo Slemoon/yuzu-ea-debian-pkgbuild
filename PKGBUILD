@@ -1,0 +1,64 @@
+# Maintainer: Brendan Szymanski <bscubed@pm.me>
+
+_pkgname=yuzu
+pkgname=$_pkgname-early-access
+pkgver=2181
+pkgrel=1
+pkgdesc="An experimental open-source Nintendo Switch emulator/debugger (early access version)"
+arch=('i686' 'x86_64')
+url="https://yuzu-emu.org/"
+license=('GPL2')
+depends=('libboost-dev' 'shared-mime-info' 'hicolor-icon-theme' 'libsdl2-dev' 'qtbase5-dev' 'qtmultimedia5-dev' 'qtwebengine5-dev' 'libxkbcommon-x11-dev' 'ffmpeg' 'libfmt-dev' 'libzip-dev' 'libopus-dev' 'libfdk-aac-dev' 'lz4' 'libmbedtls-dev' 'openssl' 'zstd')
+makedepends=('git' 'glslang-dev' 'cmake' 'ninja-build' 'graphviz' 'doxygen' 'clang' 'libboost-dev' 'catch2' 'nlohmann-json-dev' 'rapidjson-dev' 'qttools5-dev' 'qttools5-dev-tools' 'desktop-file-utils')
+optdepends=('qtwayland5: for Wayland support')
+provides=('yuzu')
+conflicts=('yuzu')
+source=("https://github.com/pineappleEA/pineapple-src/archive/EA-${pkgver}.tar.gz"
+    "inject-git-info.patch")
+md5sums=('9b26c5fb5b340ed990f48a1bbf1b85ff'
+         'bf79f6d0b474b9bedcf010e127272bdc')
+
+prepare() {
+  cd "$srcdir/pineapple-src-EA-${pkgver}"
+  cp $srcdir/inject-git-info.patch patches/
+
+  for i in patches/*.patch; do
+    patch -p1 --verbose --ignore-whitespace < $i
+  done
+  find . -name "CMakeLists.txt" -exec sed -i 's/^.*-Werror$/-W/g' {} +
+  #find . -name "CMakeLists.txt" -exec sed -i 's/^.*-Werror=.*)$/ )/g' {} +
+  find . -name "CMakeLists.txt" -exec sed -i 's/^.*-Werror=.*$/ /g' {} +
+  find . -name "CMakeLists.txt" -exec sed -i 's/-Werror/-W/g' {} +
+  sed -i -e 's/--quiet //g' src/video_core/host_shaders/CMakeLists.txt
+  sed -i -e 's#${SPIRV_HEADER_FILE} ${SOURCE_FILE}#${SPIRV_HEADER_FILE} ${SOURCE_FILE} 2>/dev/null#g' src/video_core/host_shaders/CMakeLists.txt
+  sed -i -e '/Name=yuzu/ s/$/ Early Access/' dist/yuzu.desktop
+  sed -i -e '/yuzu %f/a StartupWMClass=yuzu' dist/yuzu.desktop
+  sed -i -e 's_^MimeType=.*_&application/x-nx-nsp;application/x-nx-xci;_' dist/yuzu.desktop
+}
+build() {
+  cd "$srcdir/pineapple-src-EA-${pkgver}"
+	mkdir -p build && cd build
+  cmake .. -GNinja \
+    -DTITLE_BAR_FORMAT_IDLE="yuzu Early Access $pkgver" \
+    -DTITLE_BAR_FORMAT_RUNNING="yuzu Early Access $pkgver | {3}" \
+    -DCMAKE_INSTALL_PREFIX=/usr \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DYUZU_ENABLE_COMPATIBILITY_REPORTING=ON \
+    -DYUZU_USE_BUNDLED_UNICORN=ON \
+    -DENABLE_COMPATIBILITY_LIST_DOWNLOAD=ON \
+    -DYUZU_USE_QT_WEB_ENGINE=ON \
+    -DUSE_DISCORD_PRESENCE=ON \
+    -DENABLE_QT_TRANSLATION=ON
+
+  ninja
+}
+
+check() {
+	cd "$srcdir/pineapple-src-EA-${pkgver}/build"
+	ninja test
+}
+
+package() {
+	cd "$srcdir/pineapple-src-EA-${pkgver}/build"
+	DESTDIR="$pkgdir" ninja install
+}
